@@ -12,6 +12,7 @@ import org.jboss.logging.Logger;
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.impl.LazyValue;
 import io.quarkus.qute.Template;
+import io.quarkus.qute.Template.Fragment;
 import io.quarkus.qute.TemplateInstance;
 import io.quarkus.qute.Variant;
 import io.quarkus.qute.runtime.QuteRecorder.QuteContext;
@@ -29,6 +30,9 @@ import io.vertx.ext.web.RoutingContext;
 public class QspRecorder {
 
     private static final Logger LOG = Logger.getLogger(QspRecorder.class);
+
+    // TODO make it configurable?
+    private static final String FRAGMENT_PARAM = "frag";
 
     private final HttpBuildTimeConfig httpBuildTimeConfig;
 
@@ -59,15 +63,31 @@ public class QspRecorder {
 
                 if (path != null && templatePaths.contains(path)) {
                     Template template = templateProducer.get().getInjectableTemplate(path);
-                    TemplateInstance instance = template.instance();
+                    TemplateInstance originalInstance = template.instance();
+                    TemplateInstance instance = originalInstance;
+
+                    // It is possible to specify the fragment via query param, e.g. /qp/item?frag=detail
+                    String fragmentId = rc.request().getParam(FRAGMENT_PARAM);
+                    if (fragmentId != null) {
+                        Fragment fragment = template.getFragment(fragmentId);
+                        if (fragment == null) {
+                            LOG.errorf("Fragment [%s] not found: %s", fragmentId, rc.request().path());
+                            rc.response().setStatusCode(404).end();
+                            return;
+                        } else {
+                            instance = fragment.instance();
+                        }
+                    }
 
                     List<MIMEHeader> acceptableTypes = rc.parsedHeaders().accept();
-                    Variant selected = trySelectVariant(rc, instance, acceptableTypes);
+                    // Note that we need to obtain the variants from the original template, even if fragment is used
+                    Variant selected = trySelectVariant(rc, originalInstance, acceptableTypes);
 
                     if (selected != null) {
                         instance.setAttribute(TemplateInstance.SELECTED_VARIANT, selected);
                         rc.response().putHeader(HttpHeaders.CONTENT_TYPE, selected.getContentType());
-                        // Only compress the response if the content type matches the config value
+
+                        // Compression support - only compress the response if the content type matches the config value
                         if (httpBuildTimeConfig.enableCompression
                                 && httpBuildTimeConfig.compressMediaTypes.orElse(List.of())
                                         .contains(selected.getContentType())) {
@@ -121,6 +141,19 @@ public class QspRecorder {
                 return null;
             }
 
+            /**
+             * Extract the template path:
+             * <p>
+             * {@code /qp/item.html} -> {@code item}
+             * <p>
+             * {@code /qp/item?id=1} -> {@code item}
+             * <p>
+             * {@code /qp/nested/item.html?foo=bar} -> {@code nested/item}
+             *
+             * @param rc
+             * @param rootPath
+             * @return the template path without suffix
+             */
             private String extractTemplatePath(RoutingContext rc, String rootPath) {
                 String path = rc.request().path();
                 if (path.length() > rootPath.length()) {

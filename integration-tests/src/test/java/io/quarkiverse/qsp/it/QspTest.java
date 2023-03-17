@@ -2,8 +2,8 @@ package io.quarkiverse.qsp.it;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 
 import io.quarkus.test.junit.QuarkusTest;
@@ -45,11 +45,27 @@ public class QspTest {
                 .when().get("/qsp/nested/enum")
                 .then()
                 .statusCode(200)
-                .body(Matchers.is("OK"));
+                .body(is("OK"));
 
         // Not found
         given()
                 .when().get("/qsp/fooooooo")
+                .then()
+                .statusCode(404);
+
+        // Fragment
+        given()
+                .when().get("/qsp/fragment")
+                .then()
+                .statusCode(200)
+                .body(containsString("<title>Fragment</title> "), containsString("<p>Foo!</p>"));
+        given()
+                .when().get("/qsp/fragment?frag=foo")
+                .then()
+                .statusCode(200)
+                .body(is("<p>Foo!</p>"));
+        given()
+                .when().get("/qsp/fragment?frag=bar")
                 .then()
                 .statusCode(404);
     }
