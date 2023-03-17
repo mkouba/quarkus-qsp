@@ -6,5 +6,6 @@
 </head>
 <body>
 {#for i in integers}{i}{#if i_hasNext}:{/if}{/for}
+Name: {cdi:vertxRequest.getParam('name')}
 </body>
 </html>

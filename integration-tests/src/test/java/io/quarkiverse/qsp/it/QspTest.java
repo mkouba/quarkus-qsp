@@ -31,7 +31,7 @@ public class QspTest {
                 .when().get("/qsp/integers?name=foo")
                 .then()
                 .statusCode(200)
-                .body(containsString("1:11:42"));
+                .body(containsString("1:11:42"), containsString("Name: foo"));
 
         // Static method
         given()
